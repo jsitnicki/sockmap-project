@@ -6,7 +6,6 @@
 import asyncio, errno, logging, sys
 from socket import *
 
-
 logging.basicConfig(
     format="{asctime} - {levelname} - {message}",
     style="{",
@@ -49,6 +48,12 @@ async def proxy_stream(id, source, target):
         info(f"close stream {id}")
 
 
+def socket_cookie(s: socket) -> int:
+    SO_COOKIE = 57
+    c = s.getsockopt(SOL_SOCKET, SO_COOKIE, 8)
+    return int.from_bytes(c, "little")
+
+
 async def run(listen_addr, connect_addr):
     ln = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK)
     ln.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
@@ -61,12 +66,16 @@ async def run(listen_addr, connect_addr):
         info(f"waiting for conn at {ln.getsockname()}...")
 
         p, _ = await loop.sock_accept(ln)
-        info(f"incoming conn {p.getpeername()} ↱ {p.getsockname()}")
+        info(
+            f"incoming conn {p.getpeername()} ↱ {p.getsockname()} sk:{socket_cookie(p):x}"
+        )
 
         try:
             c = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK)
             await loop.sock_connect(c, connect_addr)
-            info(f"outgoing conn {c.getsockname()} ↳ {c.getpeername()}")
+            info(
+                f"outgoing conn {c.getsockname()} ↳ {c.getpeername()} sk:{socket_cookie(c):x}"
+            )
 
             id1 = f"{p.getpeername()} ↱ {p.getsockname()} ↷ {c.getsockname()} ↳ {c.getpeername()}"
             id2 = f"{c.getpeername()} ↱ {c.getsockname()} ↷ {p.getsockname()} ↳ {p.getpeername()}"
