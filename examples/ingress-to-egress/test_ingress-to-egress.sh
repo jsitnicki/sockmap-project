@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Run in PID namespace to reap spawned background processes
+# Run in PID namespace to kill processes we start in background on exit
 if [[ "$1" != "child" ]]; then
     exec unshare --pid --kill-child $0 child
 fi
@@ -56,9 +56,15 @@ setup()
     ip -n A addr add 10.200.0.10/24 dev veth1
 }
 
-# XXX: socat bails out on read() → EAGAIN for socket from accept()
-# readonly PROXY_CMD=(socat TCP-LISTEN:11111,bind=10.100.0.10 TCP:10.200.0.1:11111)
-readonly PROXY_CMD=(python tcp4-proxy.py 10.100.0.10 11111 10.200.0.1 11111)
+# NOTE: We could use socat instead of a Python script here if it didn't bail out
+# when a read() from an accept()'ed socket returns EAGAIN error, which is what
+# happens when we are using sockmap redirection to move the data:
+#
+#   socat TCP-LISTEN:1111,bind=10.100.0.10 TCP:10.200.0.1:2222
+#
+# Anyone wants to patch socat? :-)
+#
+readonly PROXY_CMD=(python tcp4-proxy.py 10.100.0.10 1111 10.200.0.1 2222)
 
 run()
 {
@@ -69,20 +75,15 @@ run()
     )
 
     # Start server
-
-    # ncat -lke /bin/cat 10.200.0.1 11111 &
-    taskset -c 2 sockperf server -i 10.200.0.1 --tcp &
+    taskset -c 2 sockperf server -i 10.200.0.1 -p 2222 --tcp &
     sleep 0.5
 
     # Run tests
+    echo
+    echo "*** TCP proxy latency test ***"
+    echo
 
-    # TODO: Enable when proxy can handle multiple subsequent connections
-
-    # echo
-    # echo "*** TCP proxy latency test ***"
-    # echo
-
-    # taskset -c 4 sockperf ping-pong -i 10.100.0.10 --tcp --time 30
+    taskset -c 4 sockperf ping-pong -i 10.100.0.10 -p 1111 --tcp --time 30
 
     echo
     echo "*** TCP proxy latency test WITH sockmap bypass ***"
@@ -93,7 +94,7 @@ run()
             cgroup_sock_ops \
             pinned ${BPF_FS}/test/sockops_prog
 
-    taskset -c 4 sockperf ping-pong -i 10.100.0.10 --tcp --time 30
+    taskset -c 4 sockperf ping-pong -i 10.100.0.10 -p 1111 --tcp --time 30
 
     bpftool cgroup detach \
             ${CGROUP_FS}/test.slice \
@@ -105,18 +106,24 @@ cleanup()
 {
     echo "Running cleanup..."
 
-    # purge cgroup
-    ip netns pids A | xargs -r kill 2> /dev/null || true
+    # Ignore errors and push forward
+    set +o errexit
 
-    # clean up cgroups
+    # Purge cgroup
+    for p in $(< ${CGROUP_FS}/test.slice); do
+        kill $p
+        wait $p
+    done
+
+    # Delete cgroup
     rmdir ${CGROUP_FS}/test.slice
 
-    # clean up net namespaces
+    # Delete netns
     if [ -f /var/run/netns/A ]; then
         ip netns del A
     fi
 
-    # clean up pinned bpf objects
+    # Delete BPF objects
     if [ -d /sys/fs/bpf/test ]; then
         rm -r /sys/fs/bpf/test
     fi
