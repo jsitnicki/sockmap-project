@@ -1,0 +1,33 @@
+sh # perf ftrace -C 0 -G __sys_sendto --graph-opts noirqs
+# tracer: function_graph
+#
+# CPU  DURATION                  FUNCTION CALLS
+# |     |   |                     |   |   |   |
+  0)               |  __sys_sendto() {
+  0)               |    inet_sendmsg() {
+  0)               |      tcp_bpf_sendmsg() {
+  0) + 23.782 us   |        sk_msg_alloc();
+  0) + 29.818 us   |        sk_msg_memcopy_from_iter();
+  0)               |        sk_psock_msg_verdict() {
+  0)               |          bpf_msg_redirect_hash() {
+  0)   1.764 us    |            __sock_hash_lookup_elem();
+  0)   2.599 us    |          } /* bpf_msg_redirect_hash = 0x1 */
+  0)   6.048 us    |        } /* sk_psock_msg_verdict = 0x2 */
+  0)   1.204 us    |        sk_msg_return(); /* = 0x1 */
+  0)               |        tcp_bpf_sendmsg_redir() {
+  0)   1.507 us    |          __sk_mem_schedule(); /* = 0x1 */
+  0)               |          sock_def_readable() {
+  0)               |            __wake_up_sync_key() {
+  0)               |              __wake_up_common() {
+  0)               |                pollwake() {
+  0)               |                  default_wake_function() {
+  0) + 12.872 us   |                    try_to_wake_up(); /* = 0x1 */
+  0) + 13.207 us   |                  } /* default_wake_function = 0x1 */
+  0) + 13.650 us   |                } /* pollwake = 0x1 */
+  0) + 14.583 us   |              } /* __wake_up_common = 0x1 */
+  0) + 16.905 us   |            } /* __wake_up_sync_key = 0x4b18 */
+  0) + 19.696 us   |          } /* sock_def_readable = 0x0 */
+  0) + 63.929 us   |        } /* tcp_bpf_sendmsg_redir = 0x0 */
+  0) ! 168.534 us  |      } /* tcp_bpf_sendmsg = 0x7 */
+  0) ! 172.112 us  |    } /* inet_sendmsg = 0x7 */
+  0) ! 194.533 us  |  } /* __sys_sendto = 0x7 */
