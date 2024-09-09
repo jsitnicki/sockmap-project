@@ -7,9 +7,36 @@ fi
 
 set -o errexit
 set -o nounset
+#set -o xtrace
+
+readonly BASE_DIR=$(dirname "$0")
+readonly PROXY_BIN=${BASE_DIR}/tcp_proxy
+# NOTE: We could use socat instead of a Golang prog if it didn't bail out when a
+# read() from an accept()'ed socket returns EAGAIN error, which is what happens
+# when we are using sockmap redirection to move the data:
+#
+#   socat TCP-LISTEN:1111,bind=10.100.0.10 TCP:10.200.0.1:2222
+#
+# Anyone wants to patch socat? :-)
+#
+readonly PROXY_CMD=(${PROXY_BIN} -proxy="10.100.0.10:1111" -target="10.200.0.1:2222")
 
 readonly BPF_FS=$(findmnt --first-only --noheadings --output TARGET bpf)
 readonly CGROUP_FS=$(findmnt --first-only --noheadings --output TARGET cgroup2)
+
+check_deps()
+{
+    if [ ! -x "${PROXY_BIN}" ]; then
+        cat >&2 <<EOF
+
+Please build the proxy binary first:
+
+go build tcp_proxy.go
+
+EOF
+        exit 1
+    fi
+}
 
 setup()
 {
@@ -55,16 +82,6 @@ setup()
     ip -n A addr add 10.100.0.10/24 dev veth0
     ip -n A addr add 10.200.0.10/24 dev veth1
 }
-
-# NOTE: We could use socat instead of a Python script here if it didn't bail out
-# when a read() from an accept()'ed socket returns EAGAIN error, which is what
-# happens when we are using sockmap redirection to move the data:
-#
-#   socat TCP-LISTEN:1111,bind=10.100.0.10 TCP:10.200.0.1:2222
-#
-# Anyone wants to patch socat? :-)
-#
-readonly PROXY_CMD=(python tcp4-proxy.py 10.100.0.10 1111 10.200.0.1 2222)
 
 run()
 {
@@ -129,6 +146,7 @@ cleanup()
     fi
 }
 
+check_deps
 trap cleanup EXIT
 setup
 run
