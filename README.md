@@ -1,3 +1,7 @@
+# HTTP 302 Repository moved
+
+Location: <https://github.com/sockmap-project/sockmap-project>
+
 # What is this repo?
 
 A collection of resources on SOCKMAP - presentations, code examples, links to external material.

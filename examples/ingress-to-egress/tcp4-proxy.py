@@ -40,7 +40,10 @@ async def proxy_stream(id, source, target):
         ):
             pass
         else:
+            info(f"some other oserror")
             raise e
+    except:
+        info(f"some other error")
 
     finally:
         source.close()
